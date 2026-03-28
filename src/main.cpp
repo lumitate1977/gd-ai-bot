@@ -32,7 +32,7 @@ class $modify(AIPlayLayer, PlayLayer) {
         PlayLayer::update(dt);
 
         if (!Mod::get()->getSettingValue<bool>("ai-enabled")) return;
-        if (m_isDead) return;
+        if (m_player1->m_isDead) return;
 
         auto player = m_player1;
         if (!player) return;
@@ -81,8 +81,8 @@ class $modify(AIPlayLayer, PlayLayer) {
         }
 
         if (obstacleFound) {
-            GJBaseGameLayer::pushButton(0, true);
-            GJBaseGameLayer::releaseButton(0, true);
+            player->pushButton(PlayerButton::Jump);
+            player->releaseButton(PlayerButton::Jump);
         }
 
         // Update debug label
