@@ -1,0 +1,35 @@
+{
+    "geode": "5.3.0",
+    "gd": {
+        "win": "2.2081",
+        "mac": "2.2081",
+        "android": "2.2081"
+    },
+    "id": "yourname.gd-ai-bot",
+    "name": "GD AI Bot",
+    "version": "v1.0.0",
+    "developer": "yourname",
+    "description": "AI bot that auto-plays levels using lookahead obstacle detection",
+    "settings": {
+        "ai-enabled": {
+            "name": "AI Enabled",
+            "description": "Enable the AI auto-play bot",
+            "type": "bool",
+            "default": true
+        },
+        "lookahead": {
+            "name": "Lookahead Distance",
+            "description": "How far ahead (in units) to scan for obstacles",
+            "type": "float",
+            "default": 200.0,
+            "min": 50.0,
+            "max": 1000.0
+        },
+        "show-debug": {
+            "name": "Show Debug Info",
+            "description": "Display player position and nearest obstacle info",
+            "type": "bool",
+            "default": false
+        }
+    }
+}
