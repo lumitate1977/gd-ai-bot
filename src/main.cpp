@@ -6,6 +6,7 @@ using namespace geode::prelude;
 class $modify(AIPlayLayer, PlayLayer) {
     struct Fields {
         CCLabelBMFont* m_debugLabel = nullptr;
+        bool m_holding = false;
     };
 
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
@@ -80,9 +81,12 @@ class $modify(AIPlayLayer, PlayLayer) {
             }
         }
 
-        if (obstacleFound) {
+        if (obstacleFound && !m_fields->m_holding) {
             player->pushButton(PlayerButton::Jump);
+            m_fields->m_holding = true;
+        } else if (!obstacleFound && m_fields->m_holding) {
             player->releaseButton(PlayerButton::Jump);
+            m_fields->m_holding = false;
         }
 
         // Update debug label
