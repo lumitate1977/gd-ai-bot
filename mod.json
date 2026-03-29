@@ -3,13 +3,19 @@
     "gd": {
         "win": "2.2081",
         "mac": "2.2081",
-        "android": "2.2081"
+        "android": "2.2081",
+        "ios": "2.2081"
     },
     "id": "Netherman3548.gd-ai-bot",
     "name": "GD AI Bot",
     "version": "v1.0.0",
-    "developer": "Netherman3548",
+    "developers": [
+        "Netherman3548"
+    ],
     "description": "AI bot that auto-plays levels using lookahead obstacle detection",
+    "tags": [
+        "gameplay"
+    ],
     "settings": {
         "ai-enabled": {
             "name": "AI Enabled",
@@ -31,7 +37,7 @@
         },
         "sim-jumps": {
             "name": "Simulated Jumps",
-            "description": "How many jumps ahead to simulate for trajectory planning",
+            "description": "How many jumps ahead to simulate",
             "type": "int",
             "default": 3,
             "min": 1,
@@ -44,7 +50,7 @@
         },
         "show-debug": {
             "name": "Show Debug Info",
-            "description": "Display gamemode, position, velocity, and action",
+            "description": "Display gamemode, position, and action info",
             "type": "bool",
             "default": false
         }

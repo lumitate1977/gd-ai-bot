@@ -20,10 +20,14 @@ static GameMode getMode(PlayerObject* p) {
 
 static const char* modeName(GameMode m) {
     switch (m) {
-        case GameMode::Cube: return "Cube"; case GameMode::Ship: return "Ship";
-        case GameMode::Ball: return "Ball"; case GameMode::UFO: return "UFO";
-        case GameMode::Wave: return "Wave"; case GameMode::Robot: return "Robot";
-        case GameMode::Spider: return "Spider"; case GameMode::Swing: return "Swing";
+        case GameMode::Cube: return "Cube";
+        case GameMode::Ship: return "Ship";
+        case GameMode::Ball: return "Ball";
+        case GameMode::UFO: return "UFO";
+        case GameMode::Wave: return "Wave";
+        case GameMode::Robot: return "Robot";
+        case GameMode::Spider: return "Spider";
+        case GameMode::Swing: return "Swing";
     }
     return "?";
 }
@@ -32,7 +36,7 @@ static bool isHoldMode(GameMode m) {
     return m == GameMode::Ship || m == GameMode::Wave || m == GameMode::Swing;
 }
 
-// ── Object IDs ──
+// ── Hazard & Orb Object IDs ──
 
 static const std::unordered_set<int> HAZARD_IDS = {
     8, 39, 103, 104, 135, 136, 137, 138, 139, 142, 143, 144, 145, 146,
@@ -46,7 +50,7 @@ static const std::unordered_set<int> ORB_IDS = {
 
 static const std::unordered_set<int> DASH_ORB_IDS = { 1704, 1751 };
 
-// ── Simulation ──
+// ── Trajectory Simulation ──
 
 struct Sim {
     float x, y;
@@ -55,55 +59,70 @@ struct Sim {
     float hh;
 };
 
-static void simTick(Sim& s, GameMode m, bool hold, float groundY, float ceilY, float grav) {
+static void simTick(Sim& s, GameMode m, bool hold, float groundY, float ceilY, double grav) {
     float gd = s.flip ? -1.f : 1.f;
-    float g = grav * gd;
-    float dt = 1.f;
+    double g = grav * gd;
 
     switch (m) {
-        case GameMode::Cube: case GameMode::Ball:
-        case GameMode::Robot: case GameMode::Spider: case GameMode::UFO:
-            s.yv -= g * dt;
-            s.y += (float)(s.yv * dt);
+        case GameMode::Cube:
+        case GameMode::Ball:
+        case GameMode::Robot:
+        case GameMode::Spider:
+        case GameMode::UFO:
+            s.yv -= g;
+            s.y += static_cast<float>(s.yv);
             break;
-        case GameMode::Ship: case GameMode::Swing: {
-            float a = hold ? 0.8f : -0.8f;
-            s.yv += (a * gd - g * 0.4) * dt;
+        case GameMode::Ship:
+        case GameMode::Swing: {
+            double accel = hold ? 0.8 : -0.8;
+            s.yv += accel * gd - g * 0.4;
             s.yv = std::clamp(s.yv, -8.0, 8.0);
-            s.y += (float)(s.yv * dt);
+            s.y += static_cast<float>(s.yv);
             break;
         }
         case GameMode::Wave:
-            s.y += (hold ? 6.f : -6.f) * gd * dt;
+            s.y += (hold ? 6.f : -6.f) * gd;
             break;
     }
 
     if (s.y - s.hh < groundY) { s.y = groundY + s.hh; s.yv = 0; }
-    if (s.y + s.hh > ceilY) { s.y = ceilY - s.hh; s.yv = 0; }
+    if (s.y + s.hh > ceilY)   { s.y = ceilY - s.hh;   s.yv = 0; }
 }
 
 static void simJump(Sim& s, GameMode m) {
     float gd = s.flip ? -1.f : 1.f;
     switch (m) {
-        case GameMode::Cube: case GameMode::Robot: s.yv = 6.0 * gd; break;
-        case GameMode::UFO: s.yv = 4.5 * gd; break;
-        case GameMode::Ball: case GameMode::Spider: s.flip = !s.flip; s.yv = 0; break;
-        default: break;
+        case GameMode::Cube:
+        case GameMode::Robot:
+            s.yv = 6.0 * gd;
+            break;
+        case GameMode::UFO:
+            s.yv = 4.5 * gd;
+            break;
+        case GameMode::Ball:
+        case GameMode::Spider:
+            s.flip = !s.flip;
+            s.yv = 0;
+            break;
+        default:
+            break;
     }
 }
 
 static bool hitsAny(float x, float y, float hh, const std::vector<CCRect>& rects) {
     CCRect pr(x - 12.f, y - hh, 24.f, hh * 2.f);
-    for (auto& r : rects) if (pr.intersectsRect(r)) return true;
+    for (const auto& r : rects) {
+        if (pr.intersectsRect(r)) return true;
+    }
     return false;
 }
 
-static bool onSurface(Sim& s, float groundY, float ceilY) {
+static bool onSurface(const Sim& s, float groundY, float ceilY) {
     if (!s.flip) return (s.y - s.hh) <= (groundY + 4.f);
     return (s.y + s.hh) >= (ceilY - 4.f);
 }
 
-// ── Main ──
+// ── PlayLayer Hook ──
 
 class $modify(AIPlayLayer, PlayLayer) {
     struct Fields {
@@ -117,7 +136,6 @@ class $modify(AIPlayLayer, PlayLayer) {
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
 
-        // Debug label
         if (Mod::get()->getSettingValue<bool>("show-debug")) {
             auto label = CCLabelBMFont::create("AI", "bigFont.fnt");
             label->setAnchorPoint({0.f, 1.f});
@@ -128,10 +146,9 @@ class $modify(AIPlayLayer, PlayLayer) {
             m_fields->m_debugLabel = label;
         }
 
-        // Trajectory draw node
-        auto dn = CCDrawNode::create();
-        this->m_objectLayer->addChild(dn, 10000);
-        m_fields->m_trajNode = dn;
+        auto drawNode = CCDrawNode::create();
+        this->m_objectLayer->addChild(drawNode, 10000);
+        m_fields->m_trajNode = drawNode;
 
         return true;
     }
@@ -160,16 +177,17 @@ class $modify(AIPlayLayer, PlayLayer) {
         double pyv = player->m_yVelocity;
         bool flip = player->m_isUpsideDown;
         float hh = player->getContentSize().height * player->getScaleY() * 0.5f;
-        float la = (float)Mod::get()->getSettingValue<double>("lookahead");
-        int maxJ = (int)Mod::get()->getSettingValue<int64_t>("sim-jumps");
-        float grav = (float)player->m_gravity;
+        float la = static_cast<float>(Mod::get()->getSettingValue<double>("lookahead"));
+        int maxJ = static_cast<int>(Mod::get()->getSettingValue<int64_t>("sim-jumps"));
+        double grav = player->m_gravity;
         float xspd = player->m_playerSpeed * 5.77f;
         float groundY = 90.f;
         float ceilY = 690.f;
 
         if (m_fields->m_cooldown > 0) m_fields->m_cooldown--;
 
-        // ── Gather hazards + orbs ──
+        // ── Gather hazards and orbs in lookahead range ──
+
         std::vector<CCRect> hazards;
         bool orbNear = false;
         bool dashOrbNear = false;
@@ -197,9 +215,10 @@ class $modify(AIPlayLayer, PlayLayer) {
         }
 
         // ── Simulate trajectories ──
-        int steps = std::clamp((int)(la / std::max(xspd, 1.f)), 30, 300);
 
-        // Path without action
+        int steps = std::clamp(static_cast<int>(la / std::max(xspd, 1.f)), 30, 300);
+
+        // No-action path
         std::vector<CCPoint> noActPath;
         Sim sN = {px, py, pyv, flip, hh};
         bool noActDies = false;
@@ -208,21 +227,23 @@ class $modify(AIPlayLayer, PlayLayer) {
         for (int i = 0; i < steps; i++) {
             sN.x += xspd;
             simTick(sN, mode, false, groundY, ceilY, grav);
-            noActPath.push_back({sN.x, sN.y});
+            noActPath.push_back(ccp(sN.x, sN.y));
             if (!noActDies && hitsAny(sN.x, sN.y, sN.hh, hazards)) {
                 noActDies = true;
                 noActDeathStep = i;
             }
         }
 
-        // Path with action (jump now / hold)
+        // Action path (jump / hold)
         std::vector<CCPoint> actPath;
         Sim sA = {px, py, pyv, flip, hh};
         bool actDies = false;
 
         if (!isHoldMode(mode)) {
-            // Click mode: simulate jump
-            if (onSurface(sA, groundY, ceilY) || mode == GameMode::UFO || mode == GameMode::Ball || mode == GameMode::Spider) {
+            if (onSurface(sA, groundY, ceilY) ||
+                mode == GameMode::UFO ||
+                mode == GameMode::Ball ||
+                mode == GameMode::Spider) {
                 simJump(sA, mode);
             }
             bool wasGround = false;
@@ -230,9 +251,8 @@ class $modify(AIPlayLayer, PlayLayer) {
             for (int i = 0; i < steps; i++) {
                 sA.x += xspd;
                 simTick(sA, mode, false, groundY, ceilY, grav);
-                actPath.push_back({sA.x, sA.y});
+                actPath.push_back(ccp(sA.x, sA.y));
 
-                // Multi-jump on landing
                 bool onG = onSurface(sA, groundY, ceilY);
                 if (onG && !wasGround && jumpsUsed < maxJ) {
                     Sim peek = sA;
@@ -249,16 +269,16 @@ class $modify(AIPlayLayer, PlayLayer) {
                 if (hitsAny(sA.x, sA.y, sA.hh, hazards)) { actDies = true; break; }
             }
         } else {
-            // Hold mode: simulate holding
             for (int i = 0; i < steps; i++) {
                 sA.x += xspd;
                 simTick(sA, mode, true, groundY, ceilY, grav);
-                actPath.push_back({sA.x, sA.y});
+                actPath.push_back(ccp(sA.x, sA.y));
                 if (hitsAny(sA.x, sA.y, sA.hh, hazards)) { actDies = true; break; }
             }
         }
 
-        // ── Decide ──
+        // ── Decision ──
+
         bool shouldAct = false;
         std::string action = "wait";
 
@@ -266,48 +286,42 @@ class $modify(AIPlayLayer, PlayLayer) {
             shouldAct = true;
             action = dashOrbNear ? "DASH" : "ORB";
         } else if (isHoldMode(mode)) {
-            // Hold if not-holding path dies and holding path survives longer
             shouldAct = noActDies && !actDies;
             if (shouldAct) action = "HOLD";
-            // Also hold if both die but holding survives longer
             if (noActDies && actDies && actPath.size() > noActPath.size()) {
                 shouldAct = true;
                 action = "HOLD";
             }
         } else {
-            // Jump if no-jump dies and jumping survives
             if (noActDies && !actDies) {
                 shouldAct = true;
                 action = "JUMP";
             }
-            // Jump if both die but jumping is better
-            if (noActDies && actDies && actPath.size() > (size_t)noActDeathStep) {
+            if (noActDies && actDies && actPath.size() > static_cast<size_t>(noActDeathStep)) {
                 shouldAct = true;
                 action = "JUMP(risk)";
             }
         }
 
-        // ── Execute: directly manipulate player physics ──
+        // ── Execute action ──
+
         if (shouldAct && m_fields->m_cooldown <= 0) {
             if (isHoldMode(mode)) {
-                // Ship/wave/swing: set velocity directly
-                float gd = flip ? -1.f : 1.f;
+                float gdir = flip ? -1.f : 1.f;
                 if (mode == GameMode::Wave) {
-                    player->m_yVelocity = 6.0 * gd;
+                    player->m_yVelocity = 6.0 * gdir;
                 } else {
-                    player->m_yVelocity += 0.8 * gd;
+                    player->m_yVelocity += 0.8 * gdir;
                     player->m_yVelocity = std::clamp(player->m_yVelocity, -8.0, 8.0);
                 }
                 m_fields->m_holding = true;
             } else if (orbNear) {
-                // For orbs: use keyboard simulation
                 auto kb = CCDirector::sharedDirector()->getKeyboardDispatcher();
-                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, true, false, 0);
+                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, true, false, 0.0);
                 m_fields->m_holding = true;
                 m_fields->m_holdTimer = 3;
                 m_fields->m_cooldown = 2;
             } else {
-                // Click modes: apply jump velocity directly
                 Sim sCur = {px, py, pyv, flip, hh};
                 bool canJump = onSurface(sCur, groundY, ceilY) ||
                     mode == GameMode::UFO ||
@@ -315,21 +329,22 @@ class $modify(AIPlayLayer, PlayLayer) {
                     mode == GameMode::Spider;
 
                 if (canJump) {
-                    float gd = flip ? -1.f : 1.f;
+                    float gdir = flip ? -1.f : 1.f;
                     switch (mode) {
                         case GameMode::Cube:
                         case GameMode::Robot:
-                            player->m_yVelocity = 6.0 * gd;
+                            player->m_yVelocity = 6.0 * gdir;
                             break;
                         case GameMode::UFO:
-                            player->m_yVelocity = 4.5 * gd;
+                            player->m_yVelocity = 4.5 * gdir;
                             break;
                         case GameMode::Ball:
                         case GameMode::Spider:
                             player->m_isUpsideDown = !player->m_isUpsideDown;
                             player->m_yVelocity = 0;
                             break;
-                        default: break;
+                        default:
+                            break;
                     }
                     m_fields->m_cooldown = 8;
                     action += "!";
@@ -339,21 +354,21 @@ class $modify(AIPlayLayer, PlayLayer) {
             m_fields->m_holding = false;
         }
 
-        // Release orb key press
+        // Release orb key
         if (m_fields->m_holdTimer > 0) {
             m_fields->m_holdTimer--;
             if (m_fields->m_holdTimer == 0) {
                 auto kb = CCDirector::sharedDirector()->getKeyboardDispatcher();
-                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, false, false, 0);
+                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, false, false, 0.0);
                 m_fields->m_holding = false;
             }
         }
 
-        // ── Draw trajectory ──
+        // ── Draw trajectory lines ──
+
         if (m_fields->m_trajNode) {
             m_fields->m_trajNode->clear();
 
-            // No-action path: red
             if (noActPath.size() > 1) {
                 for (size_t i = 0; i + 1 < noActPath.size() && i < 120; i++) {
                     m_fields->m_trajNode->drawSegment(
@@ -361,7 +376,6 @@ class $modify(AIPlayLayer, PlayLayer) {
                         ccc4f(1.f, 0.2f, 0.2f, 0.6f));
                 }
             }
-            // Action path: green
             if (actPath.size() > 1) {
                 for (size_t i = 0; i + 1 < actPath.size() && i < 120; i++) {
                     m_fields->m_trajNode->drawSegment(
@@ -372,6 +386,7 @@ class $modify(AIPlayLayer, PlayLayer) {
         }
 
         // ── Debug label ──
+
         if (m_fields->m_debugLabel) {
             auto txt = fmt::format("{} | {:.0f},{:.0f} | {} | H:{}",
                 modeName(mode), px, py, action, hazards.size());
