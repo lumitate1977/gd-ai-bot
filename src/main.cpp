@@ -143,9 +143,8 @@ class $modify(AIPlayLayer, PlayLayer) {
         m_fields->m_cooldown = 0;
     }
 
-    void update(float dt) {
-        // Run game first
-        PlayLayer::update(dt);
+    void postUpdate(float dt) {
+        PlayLayer::postUpdate(dt);
 
         if (!Mod::get()->getSettingValue<bool>("ai-enabled")) {
             if (m_fields->m_trajNode) m_fields->m_trajNode->clear();
@@ -161,8 +160,8 @@ class $modify(AIPlayLayer, PlayLayer) {
         double pyv = player->m_yVelocity;
         bool flip = player->m_isUpsideDown;
         float hh = player->getContentSize().height * player->getScaleY() * 0.5f;
-        float la = 200.f;
-        int maxJ = 3;
+        float la = (float)Mod::get()->getSettingValue<double>("lookahead");
+        int maxJ = (int)Mod::get()->getSettingValue<int64_t>("sim-jumps");
         float grav = (float)player->m_gravity;
         float xspd = player->m_playerSpeed * 5.77f;
         float groundY = 90.f;
