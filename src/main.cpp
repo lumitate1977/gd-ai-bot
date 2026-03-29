@@ -1,5 +1,6 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/PauseLayer.hpp>
 
 using namespace geode::prelude;
 
@@ -391,6 +392,160 @@ class $modify(AIPlayLayer, PlayLayer) {
             auto txt = fmt::format("{} | {:.0f},{:.0f} | {} | H:{}",
                 modeName(mode), px, py, action, hazards.size());
             m_fields->m_debugLabel->setString(txt.c_str());
+        }
+    }
+};
+
+// ── Pause Menu Settings ──
+
+class $modify(AIPauseLayer, PauseLayer) {
+    void customSetup() {
+        PauseLayer::customSetup();
+
+        auto winSize = CCDirector::sharedDirector()->getWinSize();
+
+        // Background panel
+        auto bg = CCScale9Sprite::create("square02_small.png");
+        bg->setContentSize({220.f, 160.f});
+        bg->setOpacity(180);
+        bg->setPosition({winSize.width - 125.f, winSize.height / 2.f});
+        this->addChild(bg, 100);
+
+        float startY = winSize.height / 2.f + 55.f;
+        float cx = winSize.width - 125.f;
+
+        // Title
+        auto title = CCLabelBMFont::create("AI Bot Settings", "bigFont.fnt");
+        title->setScale(0.35f);
+        title->setPosition({cx, startY});
+        this->addChild(title, 101);
+
+        // ── AI Enabled toggle ──
+        bool aiOn = Mod::get()->getSettingValue<bool>("ai-enabled");
+        auto aiLabel = CCLabelBMFont::create("AI Enabled", "bigFont.fnt");
+        aiLabel->setScale(0.25f);
+        aiLabel->setPosition({cx - 40.f, startY - 30.f});
+        this->addChild(aiLabel, 101);
+
+        auto aiToggle = CCMenuItemToggler::createWithStandardSprites(
+            this, menu_selector(AIPauseLayer::onToggleAI), 0.5f);
+        aiToggle->toggle(aiOn);
+        aiToggle->setPosition({85.f, 0.f});
+        auto aiMenu = CCMenu::create();
+        aiMenu->setPosition({cx + 40.f, startY - 30.f});
+        aiMenu->addChild(aiToggle);
+        this->addChild(aiMenu, 101);
+
+        // ── Debug toggle ──
+        bool dbgOn = Mod::get()->getSettingValue<bool>("show-debug");
+        auto dbgLabel = CCLabelBMFont::create("Show Debug", "bigFont.fnt");
+        dbgLabel->setScale(0.25f);
+        dbgLabel->setPosition({cx - 40.f, startY - 55.f});
+        this->addChild(dbgLabel, 101);
+
+        auto dbgToggle = CCMenuItemToggler::createWithStandardSprites(
+            this, menu_selector(AIPauseLayer::onToggleDebug), 0.5f);
+        dbgToggle->toggle(dbgOn);
+        dbgToggle->setPosition({85.f, 0.f});
+        auto dbgMenu = CCMenu::create();
+        dbgMenu->setPosition({cx + 40.f, startY - 55.f});
+        dbgMenu->addChild(dbgToggle);
+        this->addChild(dbgMenu, 101);
+
+        // ── Lookahead value ──
+        double laVal = Mod::get()->getSettingValue<double>("lookahead");
+        auto laLabel = CCLabelBMFont::create(
+            fmt::format("Lookahead: {:.0f}", laVal).c_str(), "bigFont.fnt");
+        laLabel->setScale(0.25f);
+        laLabel->setPosition({cx, startY - 80.f});
+        laLabel->setTag(500);
+        this->addChild(laLabel, 101);
+
+        auto laMinus = CCMenuItemSpriteExtra::create(
+            CCLabelBMFont::create("-", "bigFont.fnt"),
+            this, menu_selector(AIPauseLayer::onLookaheadMinus));
+        laMinus->setScale(0.5f);
+        laMinus->setPosition({-50.f, 0.f});
+        auto laPlus = CCMenuItemSpriteExtra::create(
+            CCLabelBMFont::create("+", "bigFont.fnt"),
+            this, menu_selector(AIPauseLayer::onLookaheadPlus));
+        laPlus->setScale(0.5f);
+        laPlus->setPosition({50.f, 0.f});
+        auto laMenu = CCMenu::create();
+        laMenu->setPosition({cx, startY - 95.f});
+        laMenu->addChild(laMinus);
+        laMenu->addChild(laPlus);
+        this->addChild(laMenu, 101);
+
+        // ── Sim Jumps value ──
+        int64_t sjVal = Mod::get()->getSettingValue<int64_t>("sim-jumps");
+        auto sjLabel = CCLabelBMFont::create(
+            fmt::format("Sim Jumps: {}", sjVal).c_str(), "bigFont.fnt");
+        sjLabel->setScale(0.25f);
+        sjLabel->setPosition({cx, startY - 115.f});
+        sjLabel->setTag(501);
+        this->addChild(sjLabel, 101);
+
+        auto sjMinus = CCMenuItemSpriteExtra::create(
+            CCLabelBMFont::create("-", "bigFont.fnt"),
+            this, menu_selector(AIPauseLayer::onSimJumpsMinus));
+        sjMinus->setScale(0.5f);
+        sjMinus->setPosition({-50.f, 0.f});
+        auto sjPlus = CCMenuItemSpriteExtra::create(
+            CCLabelBMFont::create("+", "bigFont.fnt"),
+            this, menu_selector(AIPauseLayer::onSimJumpsPlus));
+        sjPlus->setScale(0.5f);
+        sjPlus->setPosition({50.f, 0.f});
+        auto sjMenu = CCMenu::create();
+        sjMenu->setPosition({cx, startY - 130.f});
+        sjMenu->addChild(sjMinus);
+        sjMenu->addChild(sjPlus);
+        this->addChild(sjMenu, 101);
+    }
+
+    void onToggleAI(CCObject*) {
+        bool cur = Mod::get()->getSettingValue<bool>("ai-enabled");
+        Mod::get()->setSettingValue("ai-enabled", !cur);
+    }
+
+    void onToggleDebug(CCObject*) {
+        bool cur = Mod::get()->getSettingValue<bool>("show-debug");
+        Mod::get()->setSettingValue("show-debug", !cur);
+    }
+
+    void onLookaheadMinus(CCObject*) {
+        double val = Mod::get()->getSettingValue<double>("lookahead");
+        val = std::max(50.0, val - 50.0);
+        Mod::get()->setSettingValue("lookahead", val);
+        if (auto lbl = static_cast<CCLabelBMFont*>(this->getChildByTag(500))) {
+            lbl->setString(fmt::format("Lookahead: {:.0f}", val).c_str());
+        }
+    }
+
+    void onLookaheadPlus(CCObject*) {
+        double val = Mod::get()->getSettingValue<double>("lookahead");
+        val = std::min(1000.0, val + 50.0);
+        Mod::get()->setSettingValue("lookahead", val);
+        if (auto lbl = static_cast<CCLabelBMFont*>(this->getChildByTag(500))) {
+            lbl->setString(fmt::format("Lookahead: {:.0f}", val).c_str());
+        }
+    }
+
+    void onSimJumpsMinus(CCObject*) {
+        int64_t val = Mod::get()->getSettingValue<int64_t>("sim-jumps");
+        val = std::max((int64_t)1, val - 1);
+        Mod::get()->setSettingValue("sim-jumps", val);
+        if (auto lbl = static_cast<CCLabelBMFont*>(this->getChildByTag(501))) {
+            lbl->setString(fmt::format("Sim Jumps: {}", val).c_str());
+        }
+    }
+
+    void onSimJumpsPlus(CCObject*) {
+        int64_t val = Mod::get()->getSettingValue<int64_t>("sim-jumps");
+        val = std::min((int64_t)10, val + 1);
+        Mod::get()->setSettingValue("sim-jumps", val);
+        if (auto lbl = static_cast<CCLabelBMFont*>(this->getChildByTag(501))) {
+            lbl->setString(fmt::format("Sim Jumps: {}", val).c_str());
         }
     }
 };
