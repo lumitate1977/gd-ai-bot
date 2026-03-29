@@ -1,6 +1,5 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PlayLayer.hpp>
-#include <Geode/modify/PlayerObject.hpp>
 
 using namespace geode::prelude;
 
@@ -46,17 +45,6 @@ static const std::unordered_set<int> ORB_IDS = {
 };
 
 static const std::unordered_set<int> DASH_ORB_IDS = { 1704, 1751 };
-
-// ── Death tracker ──
-
-static std::vector<float> g_deaths;
-
-static bool nearDeath(float x, float range) {
-    for (float d : g_deaths) {
-        if (std::abs(x - d) < range) return true;
-    }
-    return false;
-}
 
 // ── Simulation ──
 
@@ -114,18 +102,6 @@ static bool onSurface(Sim& s, float groundY, float ceilY) {
     if (!s.flip) return (s.y - s.hh) <= (groundY + 4.f);
     return (s.y + s.hh) >= (ceilY - 4.f);
 }
-
-// ── Death hook ──
-
-class $modify(AIPlayerObject, PlayerObject) {
-    void playerDestroyed(bool p0) {
-        PlayerObject::playerDestroyed(p0);
-        auto pl = PlayLayer::get();
-        if (pl && this == pl->m_player1 && g_deaths.size() < 200) {
-            g_deaths.push_back(this->getPositionX());
-        }
-    }
-};
 
 // ── Main ──
 
@@ -192,7 +168,6 @@ class $modify(AIPlayLayer, PlayLayer) {
         float groundY = 90.f;
         float ceilY = 690.f;
 
-        if (nearDeath(px, 200.f)) la *= 1.5f;
         if (m_fields->m_cooldown > 0) m_fields->m_cooldown--;
 
         // ── Gather hazards + orbs ──
@@ -399,8 +374,8 @@ class $modify(AIPlayLayer, PlayLayer) {
 
         // ── Debug label ──
         if (m_fields->m_debugLabel) {
-            auto txt = fmt::format("{} | {:.0f},{:.0f} | {} | H:{} D:{}",
-                modeName(mode), px, py, action, hazards.size(), g_deaths.size());
+            auto txt = fmt::format("{} | {:.0f},{:.0f} | {} | H:{}",
+                modeName(mode), px, py, action, hazards.size());
             m_fields->m_debugLabel->setString(txt.c_str());
         }
     }
