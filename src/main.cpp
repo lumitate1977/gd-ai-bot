@@ -328,14 +328,14 @@ class $modify(AIPlayLayer, PlayLayer) {
             } else if (orbNear) {
                 // For orbs: use keyboard simulation
                 auto kb = CCDirector::sharedDirector()->getKeyboardDispatcher();
-                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, true, false);
+                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, true, false, 0);
                 m_fields->m_holding = true;
                 m_fields->m_holdTimer = 3;
                 m_fields->m_cooldown = 2;
             } else {
                 // Click modes: apply jump velocity directly
-                bool canJump = onSurface(
-                    Sim{px, py, pyv, flip, hh}, groundY, ceilY) ||
+                Sim sCur = {px, py, pyv, flip, hh};
+                bool canJump = onSurface(sCur, groundY, ceilY) ||
                     mode == GameMode::UFO ||
                     mode == GameMode::Ball ||
                     mode == GameMode::Spider;
@@ -370,7 +370,7 @@ class $modify(AIPlayLayer, PlayLayer) {
             m_fields->m_holdTimer--;
             if (m_fields->m_holdTimer == 0) {
                 auto kb = CCDirector::sharedDirector()->getKeyboardDispatcher();
-                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, false, false);
+                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, false, false, 0);
                 m_fields->m_holding = false;
             }
         }
