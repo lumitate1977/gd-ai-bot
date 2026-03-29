@@ -5,10 +5,10 @@
         "mac": "2.2081",
         "android": "2.2081"
     },
-    "id": "yourname.gd-ai-bot",
+    "id": "Netherman3548.gd-ai-bot",
     "name": "GD AI Bot",
     "version": "v1.0.0",
-    "developer": "yourname",
+    "developer": "Netherman3548",
     "description": "AI bot that auto-plays levels using lookahead obstacle detection",
     "settings": {
         "ai-enabled": {
