@@ -17,22 +17,6 @@
             "type": "bool",
             "default": true
         },
-        "lookahead": {
-            "name": "Lookahead Distance",
-            "description": "How far ahead (in units) to scan for obstacles",
-            "type": "float",
-            "default": 200.0,
-            "min": 50.0,
-            "max": 1000.0
-        },
-        "sim-jumps": {
-            "name": "Simulated Jumps",
-            "description": "How many jumps ahead to simulate for trajectory planning",
-            "type": "int",
-            "default": 3,
-            "min": 1,
-            "max": 10
-        },
         "show-debug": {
             "name": "Show Debug Info",
             "description": "Display gamemode, position, velocity, and action",
