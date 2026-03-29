@@ -25,9 +25,17 @@
             "min": 50.0,
             "max": 1000.0
         },
+        "sim-jumps": {
+            "name": "Simulated Jumps",
+            "description": "How many jumps ahead to simulate for trajectory planning",
+            "type": "int",
+            "default": 3,
+            "min": 1,
+            "max": 10
+        },
         "show-debug": {
             "name": "Show Debug Info",
-            "description": "Display player position and nearest obstacle info",
+            "description": "Display gamemode, position, velocity, and action",
             "type": "bool",
             "default": false
         }
