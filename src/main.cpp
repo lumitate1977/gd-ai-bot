@@ -4,188 +4,158 @@
 
 using namespace geode::prelude;
 
-// ── Game Mode Detection ──
+// ── Game Modes ──
 
-enum class GameMode {
-    Cube, Ship, Ball, UFO, Wave, Robot, Spider, Swingcopter
-};
+enum class GameMode { Cube, Ship, Ball, UFO, Wave, Robot, Spider, Swing };
 
-static GameMode getGameMode(PlayerObject* p) {
+static GameMode getMode(PlayerObject* p) {
     if (p->m_isShip) return GameMode::Ship;
     if (p->m_isBall) return GameMode::Ball;
     if (p->m_isBird) return GameMode::UFO;
     if (p->m_isDart) return GameMode::Wave;
     if (p->m_isRobot) return GameMode::Robot;
     if (p->m_isSpider) return GameMode::Spider;
-    if (p->m_isSwing) return GameMode::Swingcopter;
+    if (p->m_isSwing) return GameMode::Swing;
     return GameMode::Cube;
 }
 
-static const char* gameModeName(GameMode m) {
+static const char* modeName(GameMode m) {
     switch (m) {
-        case GameMode::Cube: return "Cube";
-        case GameMode::Ship: return "Ship";
-        case GameMode::Ball: return "Ball";
-        case GameMode::UFO: return "UFO";
-        case GameMode::Wave: return "Wave";
-        case GameMode::Robot: return "Robot";
-        case GameMode::Spider: return "Spider";
-        case GameMode::Swingcopter: return "Swing";
+        case GameMode::Cube: return "Cube"; case GameMode::Ship: return "Ship";
+        case GameMode::Ball: return "Ball"; case GameMode::UFO: return "UFO";
+        case GameMode::Wave: return "Wave"; case GameMode::Robot: return "Robot";
+        case GameMode::Spider: return "Spider"; case GameMode::Swing: return "Swing";
     }
     return "?";
 }
 
 static bool isHoldMode(GameMode m) {
-    return m == GameMode::Ship || m == GameMode::Wave || m == GameMode::Swingcopter;
+    return m == GameMode::Ship || m == GameMode::Wave || m == GameMode::Swing;
 }
 
-// ── Object ID Sets ──
+// ── Object IDs ──
 
 static const std::unordered_set<int> HAZARD_IDS = {
-    // Spikes
     8, 39, 103, 104, 135, 136, 137, 138, 139, 142, 143, 144, 145, 146,
-    183, 184, 185, 186, 187, 188,
-    363, 364, 365, 392, 393, 394,
-    421, 422, 446, 447,
-    667, 678, 679, 680,
-    720, 740, 741, 768, 769, 989, 991
+    183, 184, 185, 186, 187, 188, 363, 364, 365, 392, 393, 394,
+    421, 422, 446, 447, 667, 678, 679, 680, 720, 740, 741, 768, 769, 989, 991
 };
 
 static const std::unordered_set<int> ORB_IDS = {
-    // Yellow=36, Pink=35, Red=1022, Blue=84, Green=1332,
-    // Black/drop=1333, Spider=1594, Dash=1704, Green Dash=1751,
-    // Swing=1764, Teleport=747
-    35, 36, 84, 141, 747, 1022, 1330, 1332, 1333,
-    1594, 1704, 1751, 1764
+    35, 36, 84, 141, 747, 1022, 1330, 1332, 1333, 1594, 1704, 1751, 1764
 };
 
-static const std::unordered_set<int> DASH_ORB_IDS = {
-    1704, 1751 // Dash orb, Green dash orb
-};
+static const std::unordered_set<int> DASH_ORB_IDS = { 1704, 1751 };
 
-// ── Death Tracker (persists across attempts) ──
+// ── Death tracker ──
 
-static std::vector<float> g_deathPositions;
-static const int MAX_DEATHS = 200;
+static std::vector<float> g_deaths;
 
-static bool nearDeathSpot(float x, float range) {
-    for (float dx : g_deathPositions) {
-        if (std::abs(x - dx) < range) return true;
+static bool nearDeath(float x, float range) {
+    for (float d : g_deaths) {
+        if (std::abs(x - d) < range) return true;
     }
     return false;
 }
 
 // ── Simulation ──
 
-struct SimState {
+struct Sim {
     float x, y;
-    double yVel;
-    bool upsideDown;
-    float halfH;
+    double yv;
+    bool flip;
+    float hh;
 };
 
-static void simStep(SimState& s, GameMode mode, bool holding, float dt, float groundY, float ceilY, float gravity) {
-    float gDir = s.upsideDown ? -1.f : 1.f;
-    float g = gravity * gDir;
+static void simTick(Sim& s, GameMode m, bool hold, float groundY, float ceilY, float grav) {
+    float gd = s.flip ? -1.f : 1.f;
+    float g = grav * gd;
+    float dt = 1.f;
 
-    switch (mode) {
-        case GameMode::Cube:
-        case GameMode::Ball:
-        case GameMode::Robot:
-        case GameMode::Spider:
-        case GameMode::UFO:
-            s.yVel -= g * dt * 60.0;
-            s.y += static_cast<float>(s.yVel * dt * 60.0);
+    switch (m) {
+        case GameMode::Cube: case GameMode::Ball:
+        case GameMode::Robot: case GameMode::Spider: case GameMode::UFO:
+            s.yv -= g * dt;
+            s.y += (float)(s.yv * dt);
             break;
-        case GameMode::Ship:
-        case GameMode::Swingcopter: {
-            float accel = holding ? 0.8f : -0.8f;
-            s.yVel += (accel * gDir - g * 0.4) * dt * 60.0;
-            s.yVel = std::clamp(s.yVel, -8.0, 8.0);
-            s.y += static_cast<float>(s.yVel * dt * 60.0);
+        case GameMode::Ship: case GameMode::Swing: {
+            float a = hold ? 0.8f : -0.8f;
+            s.yv += (a * gd - g * 0.4) * dt;
+            s.yv = std::clamp(s.yv, -8.0, 8.0);
+            s.y += (float)(s.yv * dt);
             break;
         }
-        case GameMode::Wave: {
-            float spd = 6.f;
-            s.y += (holding ? spd : -spd) * gDir * dt * 60.f;
+        case GameMode::Wave:
+            s.y += (hold ? 6.f : -6.f) * gd * dt;
             break;
-        }
     }
 
-    // Clamp to bounds
-    if (s.y - s.halfH < groundY) { s.y = groundY + s.halfH; s.yVel = 0; }
-    if (s.y + s.halfH > ceilY)   { s.y = ceilY - s.halfH;   s.yVel = 0; }
+    if (s.y - s.hh < groundY) { s.y = groundY + s.hh; s.yv = 0; }
+    if (s.y + s.hh > ceilY) { s.y = ceilY - s.hh; s.yv = 0; }
 }
 
-static void simJump(SimState& s, GameMode mode) {
-    float gDir = s.upsideDown ? -1.f : 1.f;
-    switch (mode) {
-        case GameMode::Cube:
-        case GameMode::Robot:
-            s.yVel = 6.0 * gDir;
-            break;
-        case GameMode::UFO:
-            s.yVel = 4.5 * gDir;
-            break;
-        case GameMode::Ball:
-        case GameMode::Spider:
-            s.upsideDown = !s.upsideDown;
-            s.yVel = 0;
-            break;
-        default:
-            break;
+static void simJump(Sim& s, GameMode m) {
+    float gd = s.flip ? -1.f : 1.f;
+    switch (m) {
+        case GameMode::Cube: case GameMode::Robot: s.yv = 6.0 * gd; break;
+        case GameMode::UFO: s.yv = 4.5 * gd; break;
+        case GameMode::Ball: case GameMode::Spider: s.flip = !s.flip; s.yv = 0; break;
+        default: break;
     }
 }
 
-static bool collidesAny(float x, float y, float halfH,
-    const std::vector<CCRect>& rects)
-{
-    CCRect pr(x - 10.f, y - halfH, 20.f, halfH * 2.f);
-    for (auto& r : rects) {
-        if (pr.intersectsRect(r)) return true;
-    }
+static bool hitsAny(float x, float y, float hh, const std::vector<CCRect>& rects) {
+    CCRect pr(x - 12.f, y - hh, 24.f, hh * 2.f);
+    for (auto& r : rects) if (pr.intersectsRect(r)) return true;
     return false;
 }
 
-// ── Hook: Record Deaths ──
+static bool onSurface(Sim& s, float groundY, float ceilY) {
+    if (!s.flip) return (s.y - s.hh) <= (groundY + 4.f);
+    return (s.y + s.hh) >= (ceilY - 4.f);
+}
+
+// ── Death hook ──
 
 class $modify(AIPlayerObject, PlayerObject) {
     void playerDestroyed(bool p0) {
         PlayerObject::playerDestroyed(p0);
-
-        if (this == PlayLayer::get()->m_player1) {
-            float deathX = this->getPositionX();
-            if (g_deathPositions.size() < MAX_DEATHS) {
-                g_deathPositions.push_back(deathX);
-            }
+        auto pl = PlayLayer::get();
+        if (pl && this == pl->m_player1 && g_deaths.size() < 200) {
+            g_deaths.push_back(this->getPositionX());
         }
     }
 };
 
-// ── Main Hook ──
+// ── Main ──
 
 class $modify(AIPlayLayer, PlayLayer) {
     struct Fields {
         CCLabelBMFont* m_debugLabel = nullptr;
+        CCDrawNode* m_trajNode = nullptr;
         bool m_holding = false;
-        int m_holdFrames = 0;
-        std::string m_lastAction;
+        int m_holdTimer = 0;
+        int m_cooldown = 0;
     };
 
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
-        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) {
-            return false;
-        }
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
 
+        // Debug label
         if (Mod::get()->getSettingValue<bool>("show-debug")) {
-            auto label = CCLabelBMFont::create("AI Bot", "bigFont.fnt");
+            auto label = CCLabelBMFont::create("AI", "bigFont.fnt");
             label->setAnchorPoint({0.f, 1.f});
             label->setScale(0.3f);
             auto ws = CCDirector::sharedDirector()->getWinSize();
             label->setPosition({5.f, ws.height - 5.f});
-            this->addChild(label, 100);
+            this->addChild(label, 1000);
             m_fields->m_debugLabel = label;
         }
+
+        // Trajectory draw node
+        auto dn = CCDrawNode::create();
+        this->m_objectLayer->addChild(dn, 10000);
+        m_fields->m_trajNode = dn;
 
         return true;
     }
@@ -193,251 +163,245 @@ class $modify(AIPlayLayer, PlayLayer) {
     void resetLevel() {
         PlayLayer::resetLevel();
         m_fields->m_holding = false;
-        m_fields->m_holdFrames = 0;
+        m_fields->m_holdTimer = 0;
+        m_fields->m_cooldown = 0;
     }
 
-    // KEY FIX: Run AI logic BEFORE physics by sending input first,
-    // then calling the original update
     void update(float dt) {
+        // Run game first
+        PlayLayer::update(dt);
+
         if (!Mod::get()->getSettingValue<bool>("ai-enabled")) {
-            PlayLayer::update(dt);
+            if (m_fields->m_trajNode) m_fields->m_trajNode->clear();
             return;
         }
 
         auto player = m_player1;
-        if (!player || player->m_isDead) {
-            PlayLayer::update(dt);
-            return;
-        }
+        if (!player || player->m_isDead) return;
 
-        // ── Gather state ──
-        GameMode mode = getGameMode(player);
+        GameMode mode = getMode(player);
         float px = player->getPositionX();
         float py = player->getPositionY();
-        double pyVel = player->m_yVelocity;
-        bool flipped = player->m_isUpsideDown;
-        float halfH = player->getContentSize().height * player->getScaleY() * 0.5f;
-        float lookahead = static_cast<float>(Mod::get()->getSettingValue<double>("lookahead"));
-        int maxJumps = static_cast<int>(Mod::get()->getSettingValue<int64_t>("sim-jumps"));
-        float gravity = static_cast<float>(player->m_gravity);
-        float xSpeed = player->m_playerSpeed * 5.77f;
+        double pyv = player->m_yVelocity;
+        bool flip = player->m_isUpsideDown;
+        float hh = player->getContentSize().height * player->getScaleY() * 0.5f;
+        float la = (float)Mod::get()->getSettingValue<double>("lookahead");
+        int maxJ = (int)Mod::get()->getSettingValue<int64_t>("sim-jumps");
+        float grav = (float)player->m_gravity;
+        float xspd = player->m_playerSpeed * 5.77f;
         float groundY = 90.f;
-        float ceilY = groundY + 600.f;
+        float ceilY = 690.f;
 
-        // Increase lookahead near known death spots
-        if (nearDeathSpot(px, 200.f)) {
-            lookahead *= 1.5f;
-        }
+        if (nearDeath(px, 200.f)) la *= 1.5f;
+        if (m_fields->m_cooldown > 0) m_fields->m_cooldown--;
 
-        // ── Collect hazards and orbs ──
+        // ── Gather hazards + orbs ──
         std::vector<CCRect> hazards;
-        std::vector<std::pair<CCRect, bool>> orbs; // rect, isDash
+        bool orbNear = false;
+        bool dashOrbNear = false;
 
-        auto objects = m_objects;
-        if (objects) {
-            for (int i = 0; i < objects->count(); i++) {
-                auto obj = static_cast<GameObject*>(objects->objectAtIndex(i));
+        if (m_objects) {
+            for (int i = 0; i < m_objects->count(); i++) {
+                auto obj = static_cast<GameObject*>(m_objects->objectAtIndex(i));
                 if (!obj) continue;
-
                 int id = obj->m_objectID;
                 float ox = obj->getPositionX();
-                float dist = ox - px;
-                if (dist < -50.f || dist > lookahead) continue;
+                if (ox - px < -50.f || ox - px > la) continue;
 
                 if (HAZARD_IDS.count(id)) {
                     hazards.push_back(obj->getObjectRect());
                 }
                 if (ORB_IDS.count(id)) {
-                    bool isDash = DASH_ORB_IDS.count(id) > 0;
-                    orbs.push_back({obj->getObjectRect(), isDash});
+                    CCRect orbRect = obj->getObjectRect();
+                    CCRect nearRect(px - 5.f, py - hh * 3.f, 60.f, hh * 6.f);
+                    if (orbRect.intersectsRect(nearRect)) {
+                        orbNear = true;
+                        if (DASH_ORB_IDS.count(id)) dashOrbNear = true;
+                    }
                 }
             }
         }
 
-        // ── Check for orbs in immediate range ──
-        CCRect playerRect(px - 15.f, py - halfH, 30.f, halfH * 2.f);
-        bool orbNearby = false;
-        bool dashOrbNearby = false;
-        for (auto& [rect, isDash] : orbs) {
-            // Check if orb is within ~40 units ahead and overlapping vertically
-            if (rect.intersectsRect(CCRect(px - 5.f, py - halfH * 2.f, 50.f, halfH * 4.f))) {
-                orbNearby = true;
-                if (isDash) dashOrbNearby = true;
+        // ── Simulate trajectories ──
+        int steps = std::clamp((int)(la / std::max(xspd, 1.f)), 30, 300);
+
+        // Path without action
+        std::vector<CCPoint> noActPath;
+        Sim sN = {px, py, pyv, flip, hh};
+        bool noActDies = false;
+        int noActDeathStep = steps + 1;
+
+        for (int i = 0; i < steps; i++) {
+            sN.x += xspd;
+            simTick(sN, mode, false, groundY, ceilY, grav);
+            noActPath.push_back({sN.x, sN.y});
+            if (!noActDies && hitsAny(sN.x, sN.y, sN.hh, hazards)) {
+                noActDies = true;
+                noActDeathStep = i;
             }
         }
 
-        // ── Decide action ──
-        bool shouldPress = false;
-        bool shouldRelease = false;
-        std::string action = "wait";
+        // Path with action (jump now / hold)
+        std::vector<CCPoint> actPath;
+        Sim sA = {px, py, pyv, flip, hh};
+        bool actDies = false;
 
-        float simDt = 1.f / 60.f;
-        int simStepCount = static_cast<int>(lookahead / std::max(xSpeed * simDt * 60.f, 1.f));
-        simStepCount = std::clamp(simStepCount, 30, 300);
-
-        if (orbNearby) {
-            // Always activate orbs - press and release quickly
-            shouldPress = true;
-            action = dashOrbNearby ? "DASH ORB" : "ORB";
-        } else if (isHoldMode(mode)) {
-            // Simulate hold vs no-hold
-            SimState sH = {px, py, pyVel, flipped, halfH};
-            SimState sN = {px, py, pyVel, flipped, halfH};
-            int holdDie = simStepCount + 1;
-            int noholdDie = simStepCount + 1;
-
-            for (int i = 0; i < simStepCount; i++) {
-                sH.x += xSpeed * simDt * 60.f;
-                sN.x += xSpeed * simDt * 60.f;
-                simStep(sH, mode, true, simDt, groundY, ceilY, gravity);
-                simStep(sN, mode, false, simDt, groundY, ceilY, gravity);
-
-                if (holdDie > simStepCount && collidesAny(sH.x, sH.y, sH.halfH, hazards))
-                    holdDie = i;
-                if (noholdDie > simStepCount && collidesAny(sN.x, sN.y, sN.halfH, hazards))
-                    noholdDie = i;
+        if (!isHoldMode(mode)) {
+            // Click mode: simulate jump
+            if (onSurface(sA, groundY, ceilY) || mode == GameMode::UFO || mode == GameMode::Ball || mode == GameMode::Spider) {
+                simJump(sA, mode);
             }
+            bool wasGround = false;
+            int jumpsUsed = 1;
+            for (int i = 0; i < steps; i++) {
+                sA.x += xspd;
+                simTick(sA, mode, false, groundY, ceilY, grav);
+                actPath.push_back({sA.x, sA.y});
 
-            if (noholdDie <= holdDie) {
-                shouldPress = true;
-                action = "HOLD";
-            } else {
-                shouldRelease = true;
-                action = "release";
+                // Multi-jump on landing
+                bool onG = onSurface(sA, groundY, ceilY);
+                if (onG && !wasGround && jumpsUsed < maxJ) {
+                    Sim peek = sA;
+                    bool danger = false;
+                    for (int j = 0; j < 40; j++) {
+                        peek.x += xspd;
+                        simTick(peek, mode, false, groundY, ceilY, grav);
+                        if (hitsAny(peek.x, peek.y, peek.hh, hazards)) { danger = true; break; }
+                    }
+                    if (danger) { simJump(sA, mode); jumpsUsed++; }
+                }
+                wasGround = onG;
+
+                if (hitsAny(sA.x, sA.y, sA.hh, hazards)) { actDies = true; break; }
             }
         } else {
-            // Click modes: simulate no-jump, then test if jumping saves us
-
-            // No-jump path
-            SimState sN = {px, py, pyVel, flipped, halfH};
-            bool noJumpDies = false;
-            for (int i = 0; i < simStepCount; i++) {
-                sN.x += xSpeed * simDt * 60.f;
-                simStep(sN, mode, false, simDt, groundY, ceilY, gravity);
-                if (collidesAny(sN.x, sN.y, sN.halfH, hazards)) {
-                    noJumpDies = true;
-                    break;
-                }
+            // Hold mode: simulate holding
+            for (int i = 0; i < steps; i++) {
+                sA.x += xspd;
+                simTick(sA, mode, true, groundY, ceilY, grav);
+                actPath.push_back({sA.x, sA.y});
+                if (hitsAny(sA.x, sA.y, sA.hh, hazards)) { actDies = true; break; }
             }
+        }
 
-            if (noJumpDies) {
-                // Can we jump on a surface right now?
-                bool onSurface = false;
-                if (!flipped) {
-                    onSurface = (py - halfH) <= (groundY + 3.f);
+        // ── Decide ──
+        bool shouldAct = false;
+        std::string action = "wait";
+
+        if (orbNear) {
+            shouldAct = true;
+            action = dashOrbNear ? "DASH" : "ORB";
+        } else if (isHoldMode(mode)) {
+            // Hold if not-holding path dies and holding path survives longer
+            shouldAct = noActDies && !actDies;
+            if (shouldAct) action = "HOLD";
+            // Also hold if both die but holding survives longer
+            if (noActDies && actDies && actPath.size() > noActPath.size()) {
+                shouldAct = true;
+                action = "HOLD";
+            }
+        } else {
+            // Jump if no-jump dies and jumping survives
+            if (noActDies && !actDies) {
+                shouldAct = true;
+                action = "JUMP";
+            }
+            // Jump if both die but jumping is better
+            if (noActDies && actDies && actPath.size() > (size_t)noActDeathStep) {
+                shouldAct = true;
+                action = "JUMP(risk)";
+            }
+        }
+
+        // ── Execute: directly manipulate player physics ──
+        if (shouldAct && m_fields->m_cooldown <= 0) {
+            if (isHoldMode(mode)) {
+                // Ship/wave/swing: set velocity directly
+                float gd = flip ? -1.f : 1.f;
+                if (mode == GameMode::Wave) {
+                    player->m_yVelocity = 6.0 * gd;
                 } else {
-                    onSurface = (py + halfH) >= (ceilY - 3.f);
+                    player->m_yVelocity += 0.8 * gd;
+                    player->m_yVelocity = std::clamp(player->m_yVelocity, -8.0, 8.0);
                 }
-                // UFO/Ball/Spider can jump anytime
-                bool canJump = onSurface ||
+                m_fields->m_holding = true;
+            } else if (orbNear) {
+                // For orbs: use keyboard simulation
+                auto kb = CCDirector::sharedDirector()->getKeyboardDispatcher();
+                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, true, false);
+                m_fields->m_holding = true;
+                m_fields->m_holdTimer = 3;
+                m_fields->m_cooldown = 2;
+            } else {
+                // Click modes: apply jump velocity directly
+                bool canJump = onSurface(
+                    Sim{px, py, pyv, flip, hh}, groundY, ceilY) ||
                     mode == GameMode::UFO ||
                     mode == GameMode::Ball ||
                     mode == GameMode::Spider;
 
                 if (canJump) {
-                    // Test jump-now path with multi-jump support
-                    SimState sJ = {px, py, pyVel, flipped, halfH};
-                    simJump(sJ, mode);
-                    bool jumpDies = false;
-                    int jumpsUsed = 1;
-                    bool wasOnGround = false;
-
-                    for (int i = 0; i < simStepCount; i++) {
-                        sJ.x += xSpeed * simDt * 60.f;
-                        simStep(sJ, mode, false, simDt, groundY, ceilY, gravity);
-
-                        // Multi-jump: if we land and there's still danger, jump again
-                        bool onSurf = false;
-                        if (!sJ.upsideDown) {
-                            onSurf = (sJ.y - sJ.halfH) <= (groundY + 3.f);
-                        } else {
-                            onSurf = (sJ.y + sJ.halfH) >= (ceilY - 3.f);
-                        }
-
-                        if (onSurf && !wasOnGround && jumpsUsed < maxJumps) {
-                            // Look ahead a bit - do we need another jump?
-                            SimState peek = sJ;
-                            bool willDie = false;
-                            for (int j = 0; j < 40; j++) {
-                                peek.x += xSpeed * simDt * 60.f;
-                                simStep(peek, mode, false, simDt, groundY, ceilY, gravity);
-                                if (collidesAny(peek.x, peek.y, peek.halfH, hazards)) {
-                                    willDie = true;
-                                    break;
-                                }
-                            }
-                            if (willDie) {
-                                simJump(sJ, mode);
-                                jumpsUsed++;
-                            }
-                        }
-                        wasOnGround = onSurf;
-
-                        if (collidesAny(sJ.x, sJ.y, sJ.halfH, hazards)) {
-                            jumpDies = true;
+                    float gd = flip ? -1.f : 1.f;
+                    switch (mode) {
+                        case GameMode::Cube:
+                        case GameMode::Robot:
+                            player->m_yVelocity = 6.0 * gd;
                             break;
-                        }
+                        case GameMode::UFO:
+                            player->m_yVelocity = 4.5 * gd;
+                            break;
+                        case GameMode::Ball:
+                        case GameMode::Spider:
+                            player->m_isUpsideDown = !player->m_isUpsideDown;
+                            player->m_yVelocity = 0;
+                            break;
+                        default: break;
                     }
+                    m_fields->m_cooldown = 8;
+                    action += "!";
+                }
+            }
+        } else if (!shouldAct && m_fields->m_holding && isHoldMode(mode)) {
+            m_fields->m_holding = false;
+        }
 
-                    if (!jumpDies) {
-                        shouldPress = true;
-                        action = "JUMP";
-                    } else {
-                        // Jumping also dies - but it might still be better than not jumping
-                        // Jump anyway if we're very close to death without jumping
-                        action = "JUMP(risky)";
-                        shouldPress = true;
-                    }
+        // Release orb key press
+        if (m_fields->m_holdTimer > 0) {
+            m_fields->m_holdTimer--;
+            if (m_fields->m_holdTimer == 0) {
+                auto kb = CCDirector::sharedDirector()->getKeyboardDispatcher();
+                kb->dispatchKeyboardMSG(enumKeyCodes::KEY_Up, false, false);
+                m_fields->m_holding = false;
+            }
+        }
+
+        // ── Draw trajectory ──
+        if (m_fields->m_trajNode) {
+            m_fields->m_trajNode->clear();
+
+            // No-action path: red
+            if (noActPath.size() > 1) {
+                for (size_t i = 0; i + 1 < noActPath.size() && i < 120; i++) {
+                    m_fields->m_trajNode->drawSegment(
+                        noActPath[i], noActPath[i + 1], 0.5f,
+                        ccc4f(1.f, 0.2f, 0.2f, 0.6f));
+                }
+            }
+            // Action path: green
+            if (actPath.size() > 1) {
+                for (size_t i = 0; i + 1 < actPath.size() && i < 120; i++) {
+                    m_fields->m_trajNode->drawSegment(
+                        actPath[i], actPath[i + 1], 0.5f,
+                        ccc4f(0.2f, 1.f, 0.2f, 0.6f));
                 }
             }
         }
 
-        // ── Execute input BEFORE the game update ──
-        if (shouldPress && !m_fields->m_holding) {
-            // Press button
-            GJBaseGameLayer::handleButton(true, 0, true);
-            m_fields->m_holding = true;
-            m_fields->m_holdFrames = 0;
-        }
-
-        if (m_fields->m_holding) {
-            m_fields->m_holdFrames++;
-
-            // For click modes, release after a few frames
-            if (!isHoldMode(mode) && !orbNearby) {
-                if (m_fields->m_holdFrames >= 4) {
-                    GJBaseGameLayer::handleButton(false, 0, true);
-                    m_fields->m_holding = false;
-                    m_fields->m_holdFrames = 0;
-                }
-            }
-            // For hold modes, release when told to
-            if (isHoldMode(mode) && shouldRelease) {
-                GJBaseGameLayer::handleButton(false, 0, true);
-                m_fields->m_holding = false;
-                m_fields->m_holdFrames = 0;
-            }
-            // For orbs, quick release
-            if (orbNearby && m_fields->m_holdFrames >= 2) {
-                GJBaseGameLayer::handleButton(false, 0, true);
-                m_fields->m_holding = false;
-                m_fields->m_holdFrames = 0;
-            }
-        }
-
-        // ── NOW run the game physics ──
-        PlayLayer::update(dt);
-
-        // ── Debug overlay ──
+        // ── Debug label ──
         if (m_fields->m_debugLabel) {
-            m_fields->m_lastAction = action;
-            std::string text = fmt::format(
-                "{} | {:.0f},{:.0f} | v:{:.1f} | {} | H:{} O:{} D:{}",
-                gameModeName(mode), px, py, pyVel,
-                action,
-                hazards.size(), orbs.size(), g_deathPositions.size()
-            );
-            m_fields->m_debugLabel->setString(text.c_str());
+            auto txt = fmt::format("{} | {:.0f},{:.0f} | {} | H:{} D:{}",
+                modeName(mode), px, py, action, hazards.size(), g_deaths.size());
+            m_fields->m_debugLabel->setString(txt.c_str());
         }
     }
 };
