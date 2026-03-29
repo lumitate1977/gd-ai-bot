@@ -12,47 +12,5 @@
     "developers": [
         "Netherman3548"
     ],
-    "description": "AI bot that auto-plays levels using lookahead obstacle detection",
-    "tags": [
-        "gameplay"
-    ],
-    "settings": {
-        "ai-enabled": {
-            "name": "AI Enabled",
-            "description": "Enable the AI auto-play bot",
-            "type": "bool",
-            "default": true
-        },
-        "lookahead": {
-            "name": "Lookahead Distance",
-            "description": "How far ahead (in units) to scan for obstacles",
-            "type": "float",
-            "default": 200.0,
-            "min": 50.0,
-            "max": 1000.0,
-            "control": {
-                "slider": true,
-                "slider-step": 10.0
-            }
-        },
-        "sim-jumps": {
-            "name": "Simulated Jumps",
-            "description": "How many jumps ahead to simulate",
-            "type": "int",
-            "default": 3,
-            "min": 1,
-            "max": 10,
-            "control": {
-                "arrows": true,
-                "arrow-step": 1,
-                "slider": true
-            }
-        },
-        "show-debug": {
-            "name": "Show Debug Info",
-            "description": "Display gamemode, position, and action info",
-            "type": "bool",
-            "default": false
-        }
-    }
+    "description": "AI bot that auto-plays levels using lookahead obstacle detection"
 }
